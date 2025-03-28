@@ -1,0 +1,55 @@
+name: 'Initialize Azure CLI Prerequisite'
+
+on:
+  workflow_dispatch: # Manually triggers via the "Run workflow" button in the GitHub UI
+
+permissions:
+  id-token: write           # Required for Azure OIDC authentication
+  contents: read            # Allows reading the repository contents
+  pull-requests: write      # Enables PR status updates or comments
+
+env:
+  ARM_CLIENT_ID: "${{ secrets.AZURE_CLIENT_ID }}"
+  ARM_SUBSCRIPTION_ID: "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+  ARM_TENANT_ID: "${{ secrets.AZURE_TENANT_ID }}"
+
+jobs:
+  setup-azure:
+    runs-on: ubuntu-latest # The job will run on a GitHub-hosted Ubuntu runner
+
+    steps:
+      - name: Checkout repository         # Fetch the source code from the repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure using OIDC
+        uses: azure/login@v2
+        with:
+          auth-type: IDENTITY
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Register required Azure providers and features
+        run: |
+          #!/bin/bash
+          
+          # List of Azure Resource Providers required for Terraform provisioning
+          RESOURCE_PROVIDERS=(
+            "Microsoft.Network"
+            "Microsoft.Compute"
+            "Microsoft.KeyVault"
+            "Microsoft.Storage"
+          )
+
+          echo "Checking and registering required Azure resource providers..."
+
+          # Loop through each provider and register it if it's not already registered
+          for provider in "${RESOURCE_PROVIDERS[@]}"; do
+            status=$(az provider show --namespace "$provider" --query registrationState --output tsv)
+            if [[ "$status" != "Registered" ]]; then
+              echo "Registering provider: $provider"
+              az provider register --namespace "$provider"
+            else
+              echo "Provider already registered: $provider"
+            fi
+          done
